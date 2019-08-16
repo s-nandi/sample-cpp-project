@@ -1,0 +1,176 @@
+language: cpp
+dist: trusty
+
+addons:
+  apt:
+    sources:
+      - ubuntu-toolchain-r-test
+      - "sourceline": "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty-7 main"
+        "key_url": "https://%{app_host}/files/gpg/llvm-toolchain-trusty-7.asc"
+    packages: [lcov, g++-7, g++-8, clang-7, clang-format-7, clang-tidy-7, llvm-7-dev, libclang-7-dev]
+  homebrew:
+    packages: [gcc@7, cppcheck]
+    update: true
+
+cache:
+  directories:
+    - ${TRAVIS_BUILD_DIR}/vcpkg
+
+before_install:
+  ##
+  # Create directory for vcpkg in ${TRAVIS_BUILD_DIR}/vcpkg/
+  # If the directory was already cached, skip the installation process
+  ##
+  - bash ${TRAVIS_BUILD_DIR}/scripts/travis/travis_install_vcpkg.sh
+  # Pass -DCMAKE_TOOLCHAIN_FILE=${vcpkg_path} to cmake in order to use vcpkg-installed packages
+  - export vcpkg_path=$TRAVIS_BUILD_DIR/vcpkg/scripts/buildsystems/vcpkg.cmake
+
+install:
+  ##
+  # Install:
+  # - catch2 for unit testing
+  ##
+  - cd $TRAVIS_BUILD_DIR/vcpkg
+  - ./vcpkg install catch2
+
+before_script:
+  # Create an out-of-source build directory in ${TRAVIS_BUILD_DIR}/build/
+  - cd $TRAVIS_BUILD_DIR
+  - mkdir -p build && cd build
+
+matrix:
+  include:
+
+    # Include what you use
+    - os: linux
+      compiler: clang
+      env: CC='clang-7' CXX='clang++-7' DESC="Include what you use"
+      script:
+        - bash ${TRAVIS_BUILD_DIR}/scripts/travis/travis_install_iwyu_clang_7.sh
+        - export iwyu_path=${TRAVIS_BUILD_DIR}/include-what-you-use/build/bin/include-what-you-use
+        - cmake .. -DCMAKE_TOOLCHAIN_FILE=${vcpkg_path} -DCMAKE_CXX_INCLUDE_WHAT_YOU_USE=${iwyu_path} -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=ON
+        - cmake --build . > cmake_log.txt
+      after_failure:
+        cat cmake_log.txt
+
+    # Codecov
+    - os: linux
+      compiler: gcc
+      env: CC='gcc-7' CXX='g++-7' DESC="Codecov"
+      script:
+        - export BUILD='Debug'
+        - cmake .. -DCMAKE_TOOLCHAIN_FILE=${vcpkg_path} -DCMAKE_BUILD_TYPE=${BUILD} -DCMAKE_CXX_FLAGS="-O0 -g --coverage" -DBUILD_TESTS=ON
+        - cmake --build . --config ${BUILD}
+        - ctest -C ${BUILD} --output-on-failure
+      after_success:
+        - lcov --directory . --capture --output-file coverage.info
+        - lcov --remove coverage.info '/usr/*' "${HOME}"'/.cache/*' --output-file coverage.info
+        - lcov --list coverage.info
+        - bash <(curl -s https://codecov.io/bash) -f coverage.info || echo "Codecov did not collect coverage reports"
+
+    # Linux clang 7
+    - os: linux
+      compiler: clang
+      env: CC='clang-7' CXX='clang++-7' DESC="Linux clang 7"
+      script:
+        - export BUILD='Debug'
+        - bash ${TRAVIS_BUILD_DIR}/scripts/travis/travis_testing_script.sh
+        - export BUILD='Release'
+        - bash ${TRAVIS_BUILD_DIR}/scripts/travis/travis_testing_script.sh
+
+    # Linux gcc 8
+    - os: linux
+      compiler: gcc
+      env: CC='gcc-8' CXX='g++-8' DESC="Linux gcc 8"
+      script:
+        - export BUILD='Debug'
+        - bash ${TRAVIS_BUILD_DIR}/scripts/travis/travis_testing_script.sh
+        - export BUILD='Release'
+        - bash ${TRAVIS_BUILD_DIR}/scripts/travis/travis_testing_script.sh
+
+    # Osx gcc 7
+    - os: osx
+      osx_image: xcode10.2
+      compiler: gcc
+      env: CC='gcc-7' CXX='g++-7' DESC="Osx gcc 7"
+      script:
+        - export BUILD='Debug'
+        - bash ${TRAVIS_BUILD_DIR}/scripts/travis/travis_testing_script.sh
+        - export BUILD='Release'
+        - bash ${TRAVIS_BUILD_DIR}/scripts/travis/travis_testing_script.sh
+
+    # Osx clang 10
+    - os: osx
+      osx_image: xcode10.2
+      compiler: gcc
+      env: CC='gcc-7' CXX='g++-7' DESC="Osx clang 10"
+      script:
+        - export CC='clang' CXX='clang++'
+        - clang++ --version
+        - export BUILD='Debug'
+        - bash ${TRAVIS_BUILD_DIR}/scripts/travis/travis_testing_script.sh
+        - export BUILD='Release'
+        - bash ${TRAVIS_BUILD_DIR}/scripts/travis/travis_testing_script.sh
+
+    # Windows msvc 2017
+    - os: windows
+      compiler: gcc
+      env: DESC="Windows msvc 2017"
+      script:
+        - export BUILD='Debug'
+        - bash ${TRAVIS_BUILD_DIR}/scripts/travis/travis_testing_script.sh
+        - export BUILD='Release'
+        - bash ${TRAVIS_BUILD_DIR}/scripts/travis/travis_testing_script.sh
+
+    # Clang Tidy
+    - os: linux
+      compiler: clang
+      env: CC='clang-7' CXX='clang++-7' DESC="Clang-Tidy"
+      script:
+        - export BUILD='Debug'
+        - cmake .. -DCMAKE_TOOLCHAIN_FILE=${vcpkg_path} -DCMAKE_BUILD_TYPE=${BUILD} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF
+        - run-clang-tidy-7.py -header-filter=.* > tidy_log.txt
+      after_failure:
+        - cat tidy_log.txt
+
+    # Address Sanitizer
+    - os: linux
+      compiler: clang
+      env: CC='clang-7' CXX='clang++-7' DESC="Address Sanitizer"
+      sudo: required # see this issue for more details: https://github.com/travis-ci/travis-ci/issues/9033
+      script:
+        - export BUILD='Debug'
+        - cmake .. -DCMAKE_TOOLCHAIN_FILE=${vcpkg_path} -DCMAKE_BUILD_TYPE=${BUILD} -DCMAKE_CXX_FLAGS="-O1 -g -fsanitize=address -fno-omit-frame-pointer" -DBUILD_TESTS=ON
+        - cmake --build . --config ${BUILD}
+        - ctest -C ${BUILD} --output-on-failure
+
+    # Cppcheck
+    - os: osx
+      osx_image: xcode8.3
+      compiler: gcc
+      env: CC='gcc-7' CXX='g++-7' DESC="Cppcheck"
+      script:
+        - cd ${TRAVIS_BUILD_DIR}
+        - cppcheck --version
+        - cppcheck --enable=warning,performance,portability,style --language=c++ --quiet --verbose --error-exitcode=1 -I ./include ./src ./tests ./include ./benches
+
+    # Clang Format
+    - if: branch = master
+      os: linux
+      compiler: clang
+      env: CC='clang-7' CXX='clang++-7' DESC="Clang-Format"
+      script:
+        - cd ${TRAVIS_BUILD_DIR}
+        - git clone https://github.com/Sarcasm/run-clang-format.git
+        - ./run-clang-format/run-clang-format.py -r src include tests benches
+
+    # Benchmarks
+    - if: branch = master
+      os: linux
+      compiler: clang
+      env: CC='clang-7' CXX='clang++-7' DESC="Benchmarking"
+      script:
+        - export BUILD='Release'
+        - cmake .. -DCMAKE_TOOLCHAIN_FILE=${vcpkg_path} -DCMAKE_BUILD_TYPE=${BUILD} -DBUILD_BENCHMARKS=ON
+        - cmake --build . --config ${BUILD}
+        - ./benches/benchmarks
