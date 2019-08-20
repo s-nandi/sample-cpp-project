@@ -174,3 +174,6 @@ matrix:
         - cmake .. -DCMAKE_TOOLCHAIN_FILE=${vcpkg_path} -DCMAKE_BUILD_TYPE=${BUILD} -DBUILD_BENCHMARKS=ON
         - cmake --build . --config ${BUILD}
         - ./benches/benchmarks
+        - ctest -C ${BUILD} --output-on-failure
+        - ctest -C ${BUILD} --output-log ctest_log.txt
+        - cat ctest_log.txt
