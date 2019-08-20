@@ -37,6 +37,7 @@ endif ()
 # Benchmarking configuration
 option(BUILD_BENCHMARKS "Build benchmarks for project" OFF)
 if (${BUILD_BENCHMARKS} AND ${${PROJECT_NAME}_IS_ROOT_PROJECT})
+    include(CTest)
     add_subdirectory(benches)
 endif ()
 
