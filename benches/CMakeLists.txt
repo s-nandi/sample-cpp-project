@@ -1,5 +1,4 @@
 find_package(Catch2 CONFIG REQUIRED)
-include(CTest)
 
 # Helper function for constructing an executable given a benchmark's source file
 function(make_benchmark BENCHMARK_FILE)
