@@ -30,7 +30,6 @@ endif ()
 # Unit testing configuration
 option(BUILD_TESTS "Build tests for project" OFF)
 if (${BUILD_TESTS} AND ${${PROJECT_NAME}_IS_ROOT_PROJECT})
-    include(CTest)
     add_subdirectory(tests)
 endif ()
 
