@@ -21,4 +21,4 @@ class greeter {
 };
 }  // namespace sample_cpp_project
 
-#endif  //SAMPLE_CPP_PROJECT_LIBRARY_HPP
+#endif  // SAMPLE_CPP_PROJECT_LIBRARY_HPP
